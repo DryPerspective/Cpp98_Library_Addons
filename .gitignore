@@ -371,3 +371,4 @@ FodyWeavers.xsd
 *.user
 /cpp98_library_addons
 /include/dummy
+tests.cpp

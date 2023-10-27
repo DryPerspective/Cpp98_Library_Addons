@@ -361,3 +361,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+
+/.vs
+/x64
+*.sln
+*.vcxproj
+*.filters
+*.user
+/cpp98_library_addons

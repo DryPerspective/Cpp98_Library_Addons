@@ -10,3 +10,4 @@ A full writeup of every tool in this library can be found on this repo's wiki, b
 
 * `cow_ptr` - A copy-on-write smart pointer.
 * `value_ptr` - A smart pointer which provides value semantics for the held object.
+* `poly_value_ptr` - An equivalent of `value_ptr` which is capable of holding a base-class pointer to a polymorphic object.

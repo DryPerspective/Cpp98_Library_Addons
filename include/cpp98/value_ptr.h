@@ -43,6 +43,7 @@ namespace dp {
 			in.m_data = NULL;
 		}
 		value_ptr& operator=(value_ptr<T>&& in) {
+			this->reset();
 			m_data = in.m_data;
 			in.m_data = NULL;
 		}
@@ -110,6 +111,11 @@ namespace dp {
 
 	};
 
+	//Undefined to prevent use
+	template<>
+	class value_ptr<void>;
+
+	//And our usual swap function
 	template<typename T>
 	void swap(dp::value_ptr<T>& lhs, dp::value_ptr<T>& rhs) {
 		lhs.swap(rhs);

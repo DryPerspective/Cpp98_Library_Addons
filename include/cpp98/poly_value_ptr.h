@@ -76,7 +76,7 @@ namespace dp {
 
 		//We pass a poly_t first to account for the dynamic type. Otherwise we're in slicing hell.
 		template<typename Held_Type, typename Ptr_Type>
-		poly_value_ptr(dp::poly_t<Held_Type>, Ptr_Type* inPtr, typename dp::enable_if<dp::detail::valid_poly_ptr_type<T, Held_Type>::value, bool>::type = true) 
+		poly_value_ptr(dp::poly_t<Held_Type>, Ptr_Type* inPtr, typename dp::enable_if<dp::detail::valid_poly_ptr_type<T, Held_Type>::value && dp::detail::valid_poly_ptr_type<T, Ptr_Type>::value, bool>::type = true) 
 					: m_manager(&manager<Held_Type>::manage), m_data(static_cast<T*>(inPtr)) {}
 
 		poly_value_ptr(const poly_value_ptr& inPtr) : m_manager(inPtr.m_manager), m_data(m_manager(op::clone, &inPtr)) {}

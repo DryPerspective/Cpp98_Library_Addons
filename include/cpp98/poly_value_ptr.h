@@ -6,6 +6,7 @@
 #include "cpp98/static_assert.h"
 #include "bits/version_defs.h"
 #include "cpp98/type_traits.h"
+#include "bits/type_traits_ns.h"
 
 
 /*
@@ -34,7 +35,7 @@ namespace dp {
 	struct poly_t {};
 
 
-	template<typename T>
+	template<typename T, typename dp::enable_if<dp::is_value_type<T>::value, bool>::type = true>
 	class poly_value_ptr {
 
 
@@ -197,9 +198,6 @@ namespace dp {
 		}
 	};
 
-	//Undefined because it would open a whole can of worms
-	template<>
-	class poly_value_ptr<void>;
 
 	//And of course our freestanding swap
 	template<typename T>

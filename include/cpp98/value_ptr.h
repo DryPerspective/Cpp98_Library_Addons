@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "bits/smart_ptr_bases.h"
 #include "cpp98/static_assert.h"
+#include "bits/type_traits_ns.h"
 
 
 /*
@@ -16,7 +17,8 @@
 
 namespace dp {
 
-	template<typename T>
+
+	template<typename T, typename dp::enable_if<dp::is_value_type<T>::value, bool>::type = true>
 	class value_ptr {
 
 		T* m_data;
@@ -111,9 +113,7 @@ namespace dp {
 
 	};
 
-	//Undefined to prevent use
-	template<>
-	class value_ptr<void>;
+
 
 	//And our usual swap function
 	template<typename T>

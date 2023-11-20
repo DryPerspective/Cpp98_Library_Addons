@@ -48,6 +48,8 @@ namespace dp {
 			return std::move(m_error);
 		}
 	};
+	template<typename T>
+	bad_expected_access(T) -> bad_expected_access<T>;
 
 
 	template<typename Err>
@@ -138,13 +140,7 @@ namespace dp {
 		static_assert(!std::is_same_v<std::remove_cv_t<T>, std::in_place_t> && !std::is_same_v <std::remove_cv_t<T>, unexpect_t>, "Cannot create an expected of in_place_t or unexpect_t");
 		static_assert(!detail::is_special_of_unexpected<T> && !detail::is_special_of_unexpected<E>, "Cannot use dp::unexpected for the type of dp::expected");
 
-
-		//Because it's possible for T to be void, and because we must always hold a value, we need to account for this here
-		static constexpr bool T_is_void{ std::is_same_v<std::remove_cv_t<T>, void> };
-		template<typename valT>
-		using data_type = std::conditional_t <T_is_void, std::variant<std::monostate, E>, std::variant<valT, E>>;
-
-		data_type<T> m_data;
+		std::variant<T,E> m_data;
 
 	public:
 
@@ -162,7 +158,7 @@ namespace dp {
 		constexpr expected(const expected&) = default;
 		constexpr expected(expected&&) noexcept = default;
 
-		template<typename U = T, std::enable_if_t<!T_is_void && std::is_convertible_v<U,T>, bool> = true>
+		template<typename U = T, std::enable_if_t<std::is_convertible_v<U,T>, bool> = true>
 		constexpr expected(U&& in) : m_data{ std::in_place_index<0>, std::forward<U>(in) } {}
 
 		template<typename G, std::enable_if_t<std::is_constructible_v<const G&, E>, bool> = true>
@@ -171,20 +167,17 @@ namespace dp {
 		template<typename G, std::enable_if_t<std::is_constructible_v<G&&, E>, bool> = true>
 		constexpr expected(dp::unexpected<G>&& unex) : m_data{ std::in_place_index<1>, std::move(unex.error()) } {}
 
-		template<typename... Args, std::enable_if_t<!T_is_void, bool> = true>
+		template<typename... Args>
 		constexpr expected(std::in_place_t, Args&&... args) : m_data{ std::in_place_index<0>, std::forward<Args...>(args...) } {}
 
-		template<typename U, typename... Args, std::enable_if_t<!T_is_void && std::is_constructible_v<T, std::initializer_list<U>&, Args...>, bool> = true>
+		template<typename U, typename... Args, std::enable_if_t<std::is_constructible_v<T, std::initializer_list<U>&, Args...>, bool> = true>
 		constexpr expected(std::in_place_t, std::initializer_list<U> inList, Args&&... args) : m_data{ std::in_place_index<0>, inList, std::forward<Args...>(args...) } {}
-
-		template<typename... Args, std::enable_if_t<!T_is_void, bool> = true>
-		constexpr expected(std::in_place_t) {}
 
 		template<typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, bool> = true>
 		constexpr expected(dp::unexpect_t, Args&&... args) : m_data{ std::in_place_index<1>, std::forward<Args...>(args...) } {}
 
 		template<typename U, typename... Args, std::enable_if_t<std::is_constructible_v<E, std::initializer_list<U>&, Args...>, bool> = true>
-		constexpr expected(std::in_place_t, std::initializer_list<U> inList, Args&&... args) : m_data{ std::in_place_index<1>, inList, std::forward<Args...>(args...) } {}
+		constexpr expected(dp::unexpect_t, std::initializer_list<U> inList, Args&&... args) : m_data{ std::in_place_index<1>, inList, std::forward<Args...>(args...) } {}
 
 		//No constexpr destructors until C++20. Big sad.
 		~expected() = default;
@@ -217,7 +210,7 @@ namespace dp {
 		template<typename G, std::enable_if_t<
 			std::is_constructible_v<E, const G&> &&
 			std::is_assignable_v<E&, const G&> &&
-			(T_is_void || std::is_nothrow_constructible_v<E, const G&> || std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>), bool> = true>
+			(std::is_nothrow_constructible_v<E, const G&> || std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>), bool> = true>
 		constexpr expected& operator=(const dp::unexpected<G>& inUnex) {
 			if constexpr (std::is_nothrow_assignable_v<E, decltype(inUnex.error())>) {
 				this->error() = inUnex.error();
@@ -231,7 +224,7 @@ namespace dp {
 		template<typename G, std::enable_if_t<
 			std::is_constructible_v<E, G&&> &&
 			std::is_assignable_v<E&, G&&> &&
-			(T_is_void || std::is_nothrow_constructible_v<E, G&&> || std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>), bool> = true>
+			(std::is_nothrow_constructible_v<E, G&&> || std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>), bool> = true>
 		constexpr expected& operator=(dp::unexpected<G>&& inUnex) {
 			if constexpr (std::is_nothrow_assignable_v<E, G&&>) {
 				this->error() = inUnex.error();
@@ -246,20 +239,14 @@ namespace dp {
 		/*
 		*  Access is safer than specified by the standard. This may be reassessed in future.
 		*/
-		constexpr std::conditional_t<T_is_void, void, const T&> operator*() const & {
-			if constexpr (T_is_void) return;
-			else {
-				return std::get<0>(m_data);
-			}
+		constexpr const T& operator*() const & {
+			return std::get<0>(m_data);
 		}
 		constexpr T& operator*() & {
 			return std::get<0>(m_data);
 		}
-		constexpr std::conditional_t<T_is_void, void, const T&&> operator*() const && {
-			if constexpr (T_is_void) return;
-			else {
-				return std::move(std::get<0>(m_data));
-			}
+		constexpr const T&& operator*() const && {
+			return std::move(std::get<0>(m_data));			
 		}
 		constexpr T&& operator*() && {
 			return std::move(std::get<0>(m_data));
@@ -273,26 +260,24 @@ namespace dp {
 		}
 
 		constexpr T& value() & {
+			static_assert(std::is_constructible_v<E>);
 			if (this->has_value()) return **this;
 			throw dp::bad_expected_access(std::as_const(error()));
 		}
 
-		constexpr std::conditional_t <T_is_void, void, const T&> value() const & {
-			if constexpr (T_is_void) return;
-			else {
-				if (this->has_value()) return **this;
-				throw dp::bad_expected_access(std::as_const(error()));
-			}
+		constexpr const T& value() const & {
+			static_assert(std::is_constructible_v<E>);
+			if (this->has_value()) return **this;
+			throw dp::bad_expected_access(std::as_const(error()));			
 		}
 
-		constexpr std::conditional_t <T_is_void, void, T&&> value()&& {
-			if constexpr (T_is_void) return;
-			else {
-				if (this->has_value()) return std::move(**this);
-				throw dp::bad_expected_access(std::move(error()));
-			}
+		constexpr T&& value()&& {
+			static_assert(std::is_move_constructible_v<E>);
+			if (this->has_value()) return std::move(**this);
+			throw dp::bad_expected_access(std::move(error()));			
 		}
 		constexpr const T&& value() const&& {
+			static_assert(std::is_move_constructible_v<E>);
 			if (this->has_value()) return std::move(**this);
 			throw dp::bad_expected_access(std::move(error()));
 		}
@@ -340,6 +325,107 @@ namespace dp {
 			m_data.swap(other.m_data);
 		}
 
+
+	};
+
+	//Specialisation for void
+	template<typename E>
+	class expected<void, E> {
+		//Clear out the ill-formed versions
+		static_assert(!std::is_reference_v<E>, "Cannot create an expected of reference type");
+		static_assert(!std::is_function_v<E>, "Cannot create an expected of function type");
+		static_assert(!detail::is_special_of_unexpected<E>, "Cannot use dp::unexpected for the type of dp::expected");
+
+
+		std::variant<std::monostate, E> m_data;
+
+	public:
+
+		using value_type = void;
+		using error_type = E;
+		using unexpected_type = dp::unexpected<E>;
+
+		template<typename U>
+		using rebind = dp::expected<U, error_type>;
+
+		constexpr expected() = default;
+		constexpr expected(const expected&) = default;
+		constexpr expected(expected&&) noexcept = default;
+
+		template<typename G, std::enable_if_t<std::is_constructible_v<const G&, E>, bool> = true>
+		constexpr expected(const dp::unexpected<G>& unex) : m_data{ std::in_place_index<1>, unex.error() } {}
+
+		template<typename G, std::enable_if_t<std::is_constructible_v<G&&, E>, bool> = true>
+		constexpr expected(dp::unexpected<G>&& unex) : m_data{ std::in_place_index<1>, std::move(unex.error()) } {}
+
+		template<typename... Args>
+		constexpr expected(std::in_place_t) noexcept {}
+
+		template<typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, bool> = true>
+		constexpr expected(dp::unexpect_t, Args&&... args) : m_data{ std::in_place_index<1>, std::forward<Args...>(args...) } {}
+
+		template<typename U, typename... Args, std::enable_if_t<std::is_constructible_v<E, std::initializer_list<U>&, Args...>, bool> = true>
+		constexpr expected(dp::unexpect_t, std::initializer_list<U> inList, Args&&... args) : m_data{ std::in_place_index<1>, inList, std::forward<Args...>(args...) } {}
+
+		~expected() noexcept = default;
+
+
+		constexpr expected& operator=(const expected&) = default;
+		constexpr expected& operator=(expected&&) noexcept = default;
+
+		//Last enable_if term omitted because it is always true for this specialisation
+		template<typename G, std::enable_if_t<
+			std::is_constructible_v<E, const G&>&&
+			std::is_assignable_v<E&, const G&>, bool> = true>
+		constexpr expected& operator=(const dp::unexpected<G>& inUnex) {
+			if constexpr (std::is_nothrow_assignable_v<E, decltype(inUnex.error())>) {
+				this->error() = inUnex.error();
+			}
+			else {
+				m_data = data_type{ std::in_place_index<1>, inUnex.error() };
+			}
+			return this;
+		}
+
+		template<typename G, std::enable_if_t<
+			std::is_constructible_v<E, G&&>&&
+			std::is_assignable_v<E&, G&&>, bool> = true>
+		constexpr expected& operator=(dp::unexpected<G>&& inUnex) {
+			if constexpr (std::is_nothrow_assignable_v<E, G&&>) {
+				this->error() = inUnex.error();
+			}
+			else {
+				m_data = data_type{ std::in_place_index<1>, std::move(inUnex.error()) };
+			}
+			return *this;
+		}
+
+		constexpr void operator*() const noexcept {}
+
+		constexpr bool has_value() const noexcept {
+			return m_data.index() == 0;
+		}
+		constexpr explicit operator bool() const noexcept {
+			return has_value();
+		}
+
+		constexpr void value() const& {
+			static_assert(std::is_copy_constructible_v<E>);
+			if (!this->has_value()) throw dp::bad_expected_access{ std::as_const(error())};
+		}
+
+		constexpr void value()&& {
+			static_assert(std::is_move_constructible_v<E>);
+			if (!this->has_value()) throw dp::bad_expected_access{ std::move(error()) };
+		}
+
+		constexpr void emplace() noexcept {
+			m_data = std::monostate;
+		}
+
+		constexpr void swap(expected& other) {
+			m_data.swap(other.m_data);
+		}
 
 	};
 

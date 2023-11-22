@@ -139,8 +139,10 @@ namespace dp {
 		static_assert(!std::is_function_v<T> && !std::is_function_v<E>, "Cannot create an expected of function type");
 		static_assert(!std::is_same_v<std::remove_cv_t<T>, std::in_place_t> && !std::is_same_v <std::remove_cv_t<T>, unexpect_t>, "Cannot create an expected of in_place_t or unexpect_t");
 		static_assert(!detail::is_special_of_unexpected<T> && !detail::is_special_of_unexpected<E>, "Cannot use dp::unexpected for the type of dp::expected");
+		static_assert(!std::is_void_v<E>, "Expected error type cannot be void. Consider std::optional instead");
 
-		std::variant<T,E> m_data;
+		using data_type = std::variant<T, E>;
+		data_type m_data;
 
 	public:
 
@@ -152,13 +154,14 @@ namespace dp {
 		using rebind = dp::expected<U, error_type>;
 
 		constexpr expected() noexcept {
-			static_assert(std::is_default_constructible_v<T> || T_is_void);
+			//Before C++20 and concepts it is surprisingly hard to SFINAE a default constructor
+			static_assert(std::is_default_constructible_v<T>);
 		}
 
 		constexpr expected(const expected&) = default;
 		constexpr expected(expected&&) noexcept = default;
 
-		template<typename U = T, std::enable_if_t<std::is_convertible_v<U,T>, bool> = true>
+		template<typename U = T, std::enable_if_t<std::is_convertible_v<U, T>, bool> = true>
 		constexpr expected(U&& in) : m_data{ std::in_place_index<0>, std::forward<U>(in) } {}
 
 		template<typename G, std::enable_if_t<std::is_constructible_v<const G&, E>, bool> = true>
@@ -192,8 +195,8 @@ namespace dp {
 		//What I wouldn't do for concept syntax...
 		template<typename U = T, std::enable_if_t<
 			!std::is_same_v<expected, detail::remove_cvref_t<U>> &&
-			!detail::is_special_of_unexpected<detail::remove_cvref_t<U>> &&
-			std::is_constructible_v<T,U> &&
+			!detail::is_special_of_unexpected<detail::remove_cvref_t<U>>&&
+			std::is_constructible_v<T, U>&&
 			std::is_assignable_v<T&, U> &&
 			(std::is_nothrow_constructible_v<T, U> || std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>), bool> = true>
 		constexpr expected& operator=(U&& inVal) {
@@ -208,7 +211,7 @@ namespace dp {
 		}
 
 		template<typename G, std::enable_if_t<
-			std::is_constructible_v<E, const G&> &&
+			std::is_constructible_v<E, const G&>&&
 			std::is_assignable_v<E&, const G&> &&
 			(std::is_nothrow_constructible_v<E, const G&> || std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>), bool> = true>
 		constexpr expected& operator=(const dp::unexpected<G>& inUnex) {
@@ -218,11 +221,11 @@ namespace dp {
 			else {
 				m_data = data_type{ std::in_place_index<1>, inUnex.error() };
 			}
-			return this;
+			return *this;
 		}
 
 		template<typename G, std::enable_if_t<
-			std::is_constructible_v<E, G&&> &&
+			std::is_constructible_v<E, G&&>&&
 			std::is_assignable_v<E&, G&&> &&
 			(std::is_nothrow_constructible_v<E, G&&> || std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>), bool> = true>
 		constexpr expected& operator=(dp::unexpected<G>&& inUnex) {
@@ -239,16 +242,16 @@ namespace dp {
 		/*
 		*  Access is safer than specified by the standard. This may be reassessed in future.
 		*/
-		constexpr const T& operator*() const & {
+		constexpr const T& operator*() const& {
 			return std::get<0>(m_data);
 		}
-		constexpr T& operator*() & {
+		constexpr T& operator*()& {
 			return std::get<0>(m_data);
 		}
-		constexpr const T&& operator*() const && {
-			return std::move(std::get<0>(m_data));			
+		constexpr const T&& operator*() const&& {
+			return std::move(std::get<0>(m_data));
 		}
-		constexpr T&& operator*() && {
+		constexpr T&& operator*()&& {
 			return std::move(std::get<0>(m_data));
 		}
 
@@ -259,22 +262,22 @@ namespace dp {
 			return &std::get<0>(m_data);
 		}
 
-		constexpr T& value() & {
+		constexpr T& value()& {
 			static_assert(std::is_constructible_v<E>);
 			if (this->has_value()) return **this;
 			throw dp::bad_expected_access(std::as_const(error()));
 		}
 
-		constexpr const T& value() const & {
+		constexpr const T& value() const& {
 			static_assert(std::is_constructible_v<E>);
 			if (this->has_value()) return **this;
-			throw dp::bad_expected_access(std::as_const(error()));			
+			throw dp::bad_expected_access(std::as_const(error()));
 		}
 
 		constexpr T&& value()&& {
 			static_assert(std::is_move_constructible_v<E>);
 			if (this->has_value()) return std::move(**this);
-			throw dp::bad_expected_access(std::move(error()));			
+			throw dp::bad_expected_access(std::move(error()));
 		}
 		constexpr const T&& value() const&& {
 			static_assert(std::is_move_constructible_v<E>);
@@ -285,7 +288,7 @@ namespace dp {
 		constexpr const E& error() const& {
 			return std::get<1>(m_data);
 		}
-		constexpr E& error() & {
+		constexpr E& error()& {
 			return std::get<1>(m_data);
 		}
 		constexpr const E&& error() const&& {
@@ -304,8 +307,8 @@ namespace dp {
 		}
 
 		template<typename U>
-		constexpr T value_or(U&& in) const & {
-			return static_cast<bool>(*this) ? **this : static_cast<T>(std::forward<U>(in))
+		constexpr T value_or(U&& in) const& {
+			return static_cast<bool>(*this) ? **this : static_cast<T>(std::forward<U>(in));
 		}
 		template<typename U>
 		constexpr T value_or(U&& in)&& {
@@ -329,15 +332,20 @@ namespace dp {
 	};
 
 	//Specialisation for void
+#ifdef __cpp_concepts
+	template<typename T, typename E> requires std::is_void_v<T>
+	class expected<T, E> {
+#else
 	template<typename E>
 	class expected<void, E> {
+#endif
 		//Clear out the ill-formed versions
 		static_assert(!std::is_reference_v<E>, "Cannot create an expected of reference type");
 		static_assert(!std::is_function_v<E>, "Cannot create an expected of function type");
 		static_assert(!detail::is_special_of_unexpected<E>, "Cannot use dp::unexpected for the type of dp::expected");
 
-
-		std::variant<std::monostate, E> m_data;
+		using data_type = std::variant<std::monostate, E>;
+		data_type m_data;
 
 	public:
 
@@ -384,7 +392,7 @@ namespace dp {
 			else {
 				m_data = data_type{ std::in_place_index<1>, inUnex.error() };
 			}
-			return this;
+			return *this;
 		}
 
 		template<typename G, std::enable_if_t<
@@ -411,7 +419,7 @@ namespace dp {
 
 		constexpr void value() const& {
 			static_assert(std::is_copy_constructible_v<E>);
-			if (!this->has_value()) throw dp::bad_expected_access{ std::as_const(error())};
+			if (!this->has_value()) throw dp::bad_expected_access{ std::as_const(error()) };
 		}
 
 		constexpr void value()&& {
@@ -419,8 +427,21 @@ namespace dp {
 			if (!this->has_value()) throw dp::bad_expected_access{ std::move(error()) };
 		}
 
+		constexpr const E& error() const& {
+			return std::get<1>(m_data);
+		}
+		constexpr E& error()& {
+			return std::get<1>(m_data);
+		}
+		constexpr const E&& error() const&& {
+			return std::move(std::get<1>(m_data));
+		}
+		constexpr E&& error()&& {
+			return std::move(std::get<1>(m_data));
+		}
+
 		constexpr void emplace() noexcept {
-			m_data = std::monostate;
+			m_data = std::monostate{};
 		}
 
 		constexpr void swap(expected& other) {
@@ -430,7 +451,7 @@ namespace dp {
 	};
 
 	template<typename T1, typename E1, typename T2, typename E2>
-	constexpr bool operator==(const dp::expected<T1,E1>& lhs, const dp::expected<T2,E2>& rhs) noexcept {
+	constexpr bool operator==(const dp::expected<T1, E1>& lhs, const dp::expected<T2, E2>& rhs) noexcept {
 		return (lhs.has_value() && rhs.has_value() && *lhs == *rhs);
 	}
 

@@ -5,48 +5,75 @@
 #error "Multiple different defer types detected. Use one or the other"
 #endif
 
-#include <functional>
 #include <type_traits>
+#include <utility>
+#include <functional>
+#include <tuple>
 
 namespace dp {
 
-	template<typename Callable, std::enable_if_t<std::is_invocable_v<Callable>, bool> = true>
-	class defer {
+    template<typename Callable, typename... Args>
+    class defer {
+
+        using cleanup_type = std::decay_t<Callable>; //Function types (not function pointers) can't be stored but can still be "passed" to the ctor
+
+        cleanup_type cleanup;
+        std::tuple<Args...> call_args;
+
+    public:
+        //Template for forwarding references
+        template<typename T, typename... TArgs,
+            std::enable_if_t<std::is_constructible_v<std::tuple<Args...>, TArgs...>&&
+            std::is_convertible_v<T, Callable>&&
+            std::is_invocable_v<Callable, Args...>, bool> = true>
+        defer(T&& t, TArgs&&... args) : cleanup{ std::forward<T>(t) }, call_args{ std::make_tuple(std::forward<TArgs...>(args...)) } {}
+
+        //By definition, this is a scope-local construct. So moving/copying it makes no sense.
+        defer(const defer&) = delete;
+        defer(defer&&) = delete;
+        defer& operator=(const defer&) = delete;
+        defer& operator=(defer&&) = delete;
+
+        ~defer() noexcept(noexcept(cleanup)) {
+            std::apply(std::move(cleanup), std::move(call_args));
+        }
+
+    };
+    template<typename T, typename... Args>
+    defer(T, Args...) -> defer<T, Args...>;
 
 
-		//Filter out function types down to function pointers
-		using defer_type = std::decay_t<Callable>;
+    template<typename Callable>
+    class defer<Callable> {
 
-		defer_type m_call;
+        using cleanup_type = std::decay_t<Callable>;
 
+        cleanup_type cleanup;
 
-	public:
+    public:
+        template<typename F,
+            std::enable_if_t<std::is_convertible_v<F, Callable>&&
+            std::is_invocable_v<F>, bool> = true>
+        defer(F&& inFunc) : cleanup{ std::forward<F>(inFunc) } {}
 
-		template<typename T = Callable, std::enable_if_t<std::is_convertible_v<T, Callable>, bool> = true>
-		constexpr defer(T&& in) : m_call{ std::forward<T>(in) } {}
+        //By definition, this is a scope-local construct. So moving/copying it makes no sense.
+        defer(const defer&) = delete;
+        defer(defer&&) = delete;
+        defer& operator=(const defer&) = delete;
+        defer& operator=(defer&&) = delete;
 
-		//By definition this is a scope-local, one-and-done tool. We don't want multiple copies of the same deferral
-		defer() = delete;
-		defer(const defer&) = delete;
-		defer(defer&&) = delete;
-
-		defer& operator=(const defer&) = delete;
-		defer& operator=(defer&&) = delete;
-
-
-		~defer() noexcept {
-			std::invoke(m_call);
-		}
-	};
-	template<typename T>
-	defer(T) -> defer<T>;
-
+        ~defer() noexcept(noexcept(cleanup)) {
+            std::invoke(cleanup);
+        }
+    };
+    template<typename T>
+    defer(T) -> defer<T>;
 }
 
 /*
-*   In the macro case, we want to be able to generate implicit defer instances with unique names.
+*   In the macro case, we want to be able to generate implicit Defer instances with unique names.
 *   As such we use __COUNTER__ if it's a available and __LINE__ if not, and concat each one such that
-*   the macro generates classes called defer_Struct1, defer_Struct2, defer_Struct3. Unique but still
+*   the macro generates classes called Defer_Struct1, Defer_Struct2, Defer_Struct3. Unique but still
 *   understandable and diagnosable if needed.
 */
 #define DEFER_CONCAT_IMPL(x,y) x##y
@@ -58,11 +85,7 @@ namespace dp {
 #define DEFER_COUNT __LINE__
 #endif
 
-//Note that a [&] isn't the sledgehammer it may appear to be.
-//A lambda is not required to actually capture variables it does not use, and since this is a scope-local construct we are unlikely to run into scope issues
-//Varidadic macro to prevent commas being problematic
-#define DEFER(...) [[maybe_unused]] auto DEFER_CONCAT_MACRO(defer_Struct, DEFER_COUNT) = dp::defer([&]() noexcept { __VA_ARGS__ ;});
-
+#define DEFER(ARGS) [[maybe_unused]] auto DEFER_CONCAT_MACRO(Defer_Struct, DEFER_COUNT) = dp::defer([&](){ARGS ;});
 
 
 

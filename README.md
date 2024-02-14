@@ -13,9 +13,7 @@ A full writeup of every tool in this library can be found on this repo's wiki, b
 * `cow_ptr` - A copy-on-write smart pointer.
 * `value_ptr` - A smart pointer which provides value semantics for the held object.
 * `poly_value_ptr` - An equivalent of `value_ptr` which is capable of holding a base-class pointer to a polymorphic object.
-* `defer` - A tool to automatically execute certain code on exit of a given scope.
 
 **C++17-Compatible Library Features:**
 
-* `defer` - An updated defer tool with additional functionality
 * `expected` - A C++17 version of `std::expected`
